@@ -1,0 +1,40 @@
+# build outputs
+build/
+dist/
+*.apk
+*.exe
+*.zip
+
+# gradle / android
+.gradle/
+local.properties
+ngaext/.gradle/
+ngaext/build/
+ngaext/app/build/
+ngaext/local.properties
+
+# third-party binaries (put them here manually)
+tools/lspatch.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# os
+Thumbs.db
+.DS_Store
+
+# local notes
+*.local.md
+
+# dev helpers
+dev/*.json
+dev/pageid*.txt
+
+# signing keys (never publish)
+ngaext-installer/app/src/main/assets/keystore
+ngaext-installer/app/src/main/assets/ks.p12
+
+# dev captured data
+dev/*.txt

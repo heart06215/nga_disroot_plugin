@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="NGA 网页转译"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault.Light">
+
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="把评论里的 disroot 链接正文解密后转译到评论下方" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+
+    </application>
+
+</manifest>

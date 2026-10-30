@@ -1,0 +1,10 @@
+{
+    Filter = {
+        Bundles = (
+            "com.pianzong.nga",
+            "com.pianzong.nga.iphone",
+            "com.donews.nga",
+            "com.nga.iphone"
+        );
+    };
+}

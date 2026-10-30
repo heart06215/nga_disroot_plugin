@@ -1,0 +1,79 @@
+plugins {
+    id 'com.android.application'
+}
+
+// JS 源码只在 assets/ngaext.js 维护；构建时自动生成 JsSource.java，避免两份代码不同步。
+def jsAsset = file('src/main/assets/ngaext.js')
+def jsGenDir = layout.buildDirectory.dir('generated/js')
+
+android {
+    namespace 'com.ngaext'
+    compileSdk 34
+
+    sourceSets {
+        main {
+            java.srcDir(jsGenDir)
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.ngaext"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources.excludes += ['META-INF/*']
+    }
+}
+
+dependencies {
+    compileOnly 'de.robv.android.xposed:api:82'
+}
+
+tasks.register('generateJsSource') {
+    inputs.file(jsAsset)
+    outputs.dir(jsGenDir)
+    doLast {
+        String js = jsAsset.getText('UTF-8')
+        StringBuilder sb = new StringBuilder(js.length() + 512)
+        sb.append('package com.ngaext;\n\npublic final class JsSource {\n')
+        sb.append('    public static final String SOURCE = "')
+        for (int i = 0; i < js.length(); i++) {
+            char c = js.charAt(i)
+            switch (c) {
+                case '\\': sb.append('\\\\'); break
+                case '"': sb.append('\\"'); break
+                case '\n': sb.append('\\n'); break
+                case '\r': sb.append('\\r'); break
+                case '\t': sb.append('\\t'); break
+                default:
+                    if (c < 0x20 || c > 0x7e) {
+                        sb.append(String.format('\\u%04x', (int) c))
+                    } else {
+                        sb.append(c)
+                    }
+            }
+        }
+        sb.append('";\n}\n')
+        File out = new File(jsGenDir.get().asFile, 'com/ngaext/JsSource.java')
+        out.parentFile.mkdirs()
+        out.setText(sb.toString(), 'US-ASCII')
+        logger.lifecycle("[generateJsSource] ${js.length()} chars -> ${out}")
+    }
+}
+
+tasks.named('preBuild').configure { dependsOn 'generateJsSource' }

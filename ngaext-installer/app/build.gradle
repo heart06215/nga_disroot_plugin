@@ -1,0 +1,77 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.ngaext.installer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.ngaext.installer"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources.excludes += ['META-INF/*', 'META-INF/**']
+    }
+
+    androidResources {
+        noCompress += ['dex', 'so']
+    }
+}
+
+dependencies {
+    implementation files('libs/lspatch-patch.jar')
+    implementation 'androidx.core:core:1.12.0'
+}
+
+configurations.all {
+    exclude group: 'com.google.guava', module: 'listenablefuture'
+}
+
+// 每次构建安装器前，把模块的最新 debug APK 同步到 assets/module.apk，
+// 避免改了模块却仍把旧模块打进安装器。
+tasks.register('syncModuleApk') {
+    def moduleApk = file("$rootDir/../ngaext/app/build/outputs/apk/debug/app-debug.apk")
+    def bundledApk = file('src/main/assets/module.apk')
+    def moduleSources = fileTree("$rootDir/../ngaext/app/src/main")
+
+    doLast {
+        if (!moduleApk.isFile()) {
+            if (bundledApk.isFile()) {
+                logger.warn('[syncModuleApk] 未找到模块构建产物，沿用现有 assets/module.apk：' + moduleApk)
+                return
+            }
+            throw new GradleException(
+                "模块 APK 不存在：${moduleApk}\n请先执行：gradle -p ../ngaext assembleDebug")
+        }
+
+        def newest = moduleSources.files.findAll { it.isFile() }.max { it.lastModified() }
+        if (newest != null && newest.lastModified() > moduleApk.lastModified()) {
+            logger.warn('[syncModuleApk] 模块源码比 app-debug.apk 新（' + newest.name +
+                '），请先重新构建模块：gradle -p ../ngaext assembleDebug')
+        }
+
+        bundledApk.parentFile.mkdirs()
+        java.nio.file.Files.copy(moduleApk.toPath(), bundledApk.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        logger.lifecycle("[syncModuleApk] assets/module.apk <- ${moduleApk} (${moduleApk.length()} bytes)")
+    }
+}
+
+tasks.named('preBuild').configure { dependsOn 'syncModuleApk' }

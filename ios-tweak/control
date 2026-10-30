@@ -1,0 +1,9 @@
+Package: com.ngaext.ios
+Name: NGAExt iOS
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: NGA iOS 帖子 disroot / paste.to 外链本地解密（未实机验证）
+Maintainer: ngaext
+Author: ngaext
+Section: Tweaks
+Depends: mobilesubstrate
