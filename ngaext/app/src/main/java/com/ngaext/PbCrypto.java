@@ -5,11 +5,11 @@ import android.util.Base64;
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.zip.Inflater;
 
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -106,32 +106,27 @@ public final class PbCrypto {
     }
 
     static byte[] pbkdf2(byte[] secret, byte[] salt, int iterations, int keyLen) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        byte[] k = secret.length > 64 ? md.digest(secret) : secret;
-        byte[] ipad = new byte[64];
-        byte[] opad = new byte[64];
-        Arrays.fill(ipad, (byte) 0x36);
-        Arrays.fill(opad, (byte) 0x5c);
-        for (int i = 0; i < k.length; i++) {
-            ipad[i] ^= k[i];
-            opad[i] ^= k[i];
-        }
+        // 使用 Mac（Android 上通常走 Conscrypt/原生实现），比纯 Java 的 MessageDigest 手写 HMAC 快
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret, "HmacSHA256"));
         int blocks = (keyLen + 31) / 32;
         byte[] out = new byte[blocks * 32];
         byte[] u1 = new byte[32];
         byte[] u2 = new byte[32];
         byte[] t = new byte[32];
-        byte[] inner = new byte[32];
         byte[] counter = new byte[4];
         for (int b = 1; b <= blocks; b++) {
             counter[0] = (byte) (b >>> 24);
             counter[1] = (byte) (b >>> 16);
             counter[2] = (byte) (b >>> 8);
             counter[3] = (byte) b;
-            hmac2(md, ipad, opad, salt, counter, inner, u1);
+            mac.update(salt);
+            mac.update(counter);
+            mac.doFinal(u1, 0);
             System.arraycopy(u1, 0, t, 0, 32);
             for (int c = 1; c < iterations; c++) {
-                hmac1(md, ipad, opad, u1, inner, u2);
+                mac.update(u1);
+                mac.doFinal(u2, 0);
                 for (int i = 0; i < 32; i++) t[i] ^= u2[i];
                 byte[] swap = u1;
                 u1 = u2;
@@ -140,25 +135,6 @@ public final class PbCrypto {
             System.arraycopy(t, 0, out, (b - 1) * 32, 32);
         }
         return keyLen == out.length ? out : Arrays.copyOf(out, keyLen);
-    }
-
-    private static void hmac2(MessageDigest md, byte[] ipad, byte[] opad, byte[] p1, byte[] p2, byte[] inner, byte[] out) throws Exception {
-        md.update(ipad);
-        md.update(p1);
-        md.update(p2);
-        md.digest(inner, 0, 32);
-        md.update(opad);
-        md.update(inner);
-        md.digest(out, 0, 32);
-    }
-
-    private static void hmac1(MessageDigest md, byte[] ipad, byte[] opad, byte[] p1, byte[] inner, byte[] out) throws Exception {
-        md.update(ipad);
-        md.update(p1);
-        md.digest(inner, 0, 32);
-        md.update(opad);
-        md.update(inner);
-        md.digest(out, 0, 32);
     }
 
     static byte[] gcm(byte[] key, byte[] iv, byte[] aad, byte[] ct) throws Exception {

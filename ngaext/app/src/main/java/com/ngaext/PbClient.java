@@ -61,6 +61,8 @@ public final class PbClient {
     private static String[] normalize(String[] in) {
         if (in == null || in.length == 0) return new String[]{""};
         java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+        // 先试无密码：大多数外链没有密码，可以避免为每条链接先跑多个 PBKDF2
+        set.add("");
         for (String s : in) {
             if (s == null) continue;
             String v = s.trim();
@@ -68,7 +70,6 @@ public final class PbClient {
             set.add(v);
             if (set.size() >= MAX_PASSWORDS) break;
         }
-        set.add(""); // 最后总是尝试无密码
         return set.toArray(new String[0]);
     }
 
@@ -109,6 +110,7 @@ public final class PbClient {
             c.setInstanceFollowRedirects(true);
             c.setRequestProperty("X-Requested-With", "JSONHttpRequest");
             c.setRequestProperty("Accept", "application/json");
+            c.setRequestProperty("Connection", "keep-alive");
             c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; wv) AppleWebKit/537.36");
             int code = c.getResponseCode();
             if (code != 200) throw new IOException("HTTP " + code);
@@ -123,9 +125,11 @@ public final class PbClient {
             if (!body.trim().startsWith("{")) {
                 throw new IOException("站点返回了非 PrivateBin 内容（可能正在维护或被拦截）");
             }
+            // 成功读完响应后不要 disconnect，让 HttpURLConnection 复用 TLS 连接
             return body;
-        } finally {
+        } catch (IOException e) {
             c.disconnect();
+            throw e;
         }
     }
 

@@ -117,12 +117,15 @@ public class NgaExtHook implements IXposedHookLoadPackage {
                     c.setRequestMethod("HEAD");
                     c.setConnectTimeout(8000);
                     c.setReadTimeout(8000);
+                    c.setRequestProperty("Connection", "keep-alive");
                     c.getResponseCode();
+                    try {
+                        if (c.getInputStream() != null) c.getInputStream().close();
+                    } catch (Throwable ignored) {
+                    }
                     XposedBridge.log(TAG + "warmup ok");
                 } catch (Throwable t) {
                     XposedBridge.log(TAG + "warmup failed: " + t);
-                } finally {
-                    if (c != null) c.disconnect();
                 }
             }
         }, "ngaext-warmup").start();

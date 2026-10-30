@@ -10,6 +10,10 @@ import org.json.JSONObject;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 
 import de.robv.android.xposed.XposedHelpers;
 
@@ -29,10 +33,10 @@ public class Bridge {
 
     private static final int TEXT_CAP = 300000;
 
-    /** 固定 3 线程 + 有界队列，避免一页 25 条链接时线程爆炸把 App 拖崩 */
+    /** 固定 4 线程 + 有界队列，避免一页 25 条链接时线程爆炸把 App 拖崩 */
     private static final java.util.concurrent.ThreadPoolExecutor POOL =
             new java.util.concurrent.ThreadPoolExecutor(
-                    3, 3, 30L, java.util.concurrent.TimeUnit.SECONDS,
+                    4, 4, 30L, java.util.concurrent.TimeUnit.SECONDS,
                     new java.util.concurrent.LinkedBlockingQueue<Runnable>(64),
                     new java.util.concurrent.ThreadFactory() {
                         @Override
@@ -43,6 +47,10 @@ public class Bridge {
                         }
                     },
                     new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+
+    /** 相同 URL + 相同密码候选的并发请求合并，避免引用楼重复抓取/解密 */
+    private static final ConcurrentHashMap<String, FutureTask<String>> INFLIGHT =
+            new ConcurrentHashMap<>();
 
     private final WebView webView;
 
@@ -77,8 +85,34 @@ public class Bridge {
                             source = "disk";
                             MEM_CACHE.put(url, payload);
                         } else {
-                            source = "network";
-                            payload = resolveAndBuild(url, parsePasswords(passwordsJson), ctx);
+                            final Context fctx = ctx;
+                            final String[] pws = parsePasswords(passwordsJson);
+                            final String key = url + "\n" + java.util.Arrays.toString(pws);
+                            FutureTask<String> task = new FutureTask<>(new Callable<String>() {
+                                @Override
+                                public String call() {
+                                    return resolveAndBuild(url, pws, fctx);
+                                }
+                            });
+                            FutureTask<String> running = INFLIGHT.putIfAbsent(key, task);
+                            if (running == null) {
+                                try {
+                                    task.run();
+                                    payload = task.get();
+                                    source = "network";
+                                } catch (Throwable t) {
+                                    payload = errorPayload(t);
+                                } finally {
+                                    INFLIGHT.remove(key, task);
+                                }
+                            } else {
+                                try {
+                                    payload = running.get();
+                                    source = "shared";
+                                } catch (Throwable t) {
+                                    payload = errorPayload(t);
+                                }
+                            }
                         }
                     }
 
@@ -89,6 +123,19 @@ public class Bridge {
         } catch (Throwable rejected) {
             Log.w(TAG, "queue full, skip " + url, rejected);
             dispatch(cbId, "{\"ok\":false,\"error\":\"解析队列已满，请稍后重试\"}");
+        }
+    }
+
+    private static String errorPayload(Throwable t) {
+        Throwable cause = t instanceof ExecutionException && t.getCause() != null ? t.getCause() : t;
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", false);
+            String msg = cause.getMessage();
+            o.put("error", msg == null ? cause.getClass().getSimpleName() : msg);
+            return o.toString();
+        } catch (Throwable ignored) {
+            return "{\"ok\":false,\"error\":\"unknown\"}";
         }
     }
 
