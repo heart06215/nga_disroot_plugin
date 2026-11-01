@@ -79,7 +79,8 @@
 | 项 | 状态 |
 |---|---|
 | NGA 客户端 | 9.9.69 实测通过；9.9.x 理论兼容 |
-| Android | 安装器 8.0+；模块 5.0+（需 Xposed/LSPatch）；12（API 32）实测 |
+| Android | 安装器 8.0+；模块 5.0+（需 Xposed/LSPatch）；12（MuMu，ARM 转译）实测；720×1280 / 864×1920 / 1600×2560 布局通过；8/15 静态适配未实机 |
+| ABI | NGA 官方 APK 仅 `arm64-v8a`；x86 设备需 ARM 转译（MuMu 可用，纯 x86 AVD 无法运行 NGA） |
 | 运行方式 | 补丁版（免 root）/ LSPosed（需 root） |
 | PrivateBin | v2 格式（2022 年后）已支持；**v1（2022 年前）暂不支持**，会给出明确提示 |
 | Android 11+ | 安装器已声明 NGA 包可见性（`<queries>`），可正常读取已安装的 NGA |
