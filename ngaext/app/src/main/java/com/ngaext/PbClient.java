@@ -129,11 +129,16 @@ public final class PbClient {
             c.setInstanceFollowRedirects(true);
             c.setRequestProperty("X-Requested-With", "JSONHttpRequest");
             c.setRequestProperty("Accept", "application/json");
+            c.setRequestProperty("Accept-Encoding", "gzip");
             c.setRequestProperty("Connection", "keep-alive");
             c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; wv) AppleWebKit/537.36");
             int code = c.getResponseCode();
             if (code != 200) throw new IOException("HTTP " + code);
             InputStream is = c.getInputStream();
+            String encoding = c.getContentEncoding();
+            if (encoding != null && encoding.toLowerCase(java.util.Locale.ROOT).contains("gzip")) {
+                is = new java.util.zip.GZIPInputStream(is);
+            }
             BufferedReader r = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             String line;

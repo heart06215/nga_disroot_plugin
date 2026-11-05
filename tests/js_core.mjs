@@ -153,6 +153,8 @@ async function main() {
   const android = loadPlugin('ngaext/app/src/main/assets/ngaext.js');
   testDetection(android, 'android');
   assert(android._dbg.threadKey().indexOf('测试帖子标题') >= 0, 'android: stable title thread key failed');
+  assert(!globalThis.document.documentElement.classList.contains('ngaext-night'),
+    'android: default theme should be light');
 
   const ios = loadPlugin('ios-tweak/ngaext.js');
   testDetection(ios, 'ios');

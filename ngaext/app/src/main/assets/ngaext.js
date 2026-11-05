@@ -2,15 +2,17 @@
   if (window.__ngaext_init) { try { window.__ngaext.scan(); } catch (e) {} return; }
   window.__ngaext_init = true;
 
-  var PREVIEW = 3000;
+  var PREVIEW = 800;
   var MAX_LINKS_PER_BLOCK = 300;
   var MAX_CARDS = 600;
   var TEXT_CAP = 200000;
   var CONCURRENCY = 6;
   var BRIDGE = 'NgaExtBridge';
   var STYLE_ID = 'ngaext-style-v7';
-  var DARK_KEY = 'ngaext.dark';
+  // v2：旧版本默认暗色偏好不再沿用，新安装/未设置时默认白色
+  var DARK_KEY = 'ngaext.dark.v2';
   var PREVIEW_KEY = 'ngaext.preview';
+  var SHOW_FULL_KEY = 'ngaext.showFull';
   var LAST_THREAD_KEY = 'ngaext.lastThreadKey';
   var REPO_URL = 'https://github.com/heart06215/nga_disroot_plugin';
   var REQUEST_TIMEOUT = 45000;
@@ -47,10 +49,14 @@
 
   function previewLen() {
     try {
-      var v = parseInt(localStorage.getItem(PREVIEW_KEY) || '3000', 10);
+      var v = parseInt(localStorage.getItem(PREVIEW_KEY) || '800', 10);
       if (v >= 200 && v <= 20000) return v;
     } catch (e) {}
     return PREVIEW;
+  }
+
+  function showFull() {
+    try { return localStorage.getItem(SHOW_FULL_KEY) === '1'; } catch (e) { return false; }
   }
 
   /* ---------- 指纹识别 ---------- */
@@ -284,6 +290,12 @@
       '.ngaext-set-btn{padding:6px 10px;border:1px solid #D8BE84;border-radius:6px;background:#FFFDF8;',
       'color:#8A6A22;font-size:12px;}',
       '.ngaext-set-btn.on{background:#8A6A22;color:#FFFDF8;}',
+      '.ngaext-settings-highlight{display:flex;align-items:center;justify-content:space-between;gap:10px;',
+      'margin:10px 0 12px 0;padding:12px;border:2px solid #C8A44D;border-radius:9px;',
+      'background:linear-gradient(180deg,#FFF6D9 0%,#FFEDBB 100%);}',
+      '.ngaext-settings-highlight b{display:block;font-size:15px;color:#6B4E12;}',
+      '.ngaext-settings-sub{font-size:11px;color:#8B7857;line-height:1.4;margin-top:3px;}',
+      '.ngaext-full-toggle{flex:0 0 auto;min-width:64px;padding:8px 10px;font-weight:700;}',
       '.ngaext-set-link{display:block;margin:8px 0;color:#8A6A22;font-size:13px;word-break:break-all;}',
       '.ngaext-settings-close{float:right;border:0;background:transparent;font-size:18px;color:#8A6A22;cursor:pointer;}',
 
@@ -309,6 +321,9 @@
       'html.ngaext-night .ngaext-pwbox input{background:#2A241C;border-color:#6B5730;color:#E9DFCB;}',
       'html.ngaext-night .ngaext-settings-box{background:#1C1813;border-color:#6B5730;color:#E9DFCB;}',
       'html.ngaext-night .ngaext-settings-box h3{color:#E9DFCB;}',
+      'html.ngaext-night .ngaext-settings-highlight{background:#2A241C;border-color:#6B5730;}',
+      'html.ngaext-night .ngaext-settings-highlight b{color:#F0D58A;}',
+      'html.ngaext-night .ngaext-settings-sub{color:#A8987A;}',
       'html.ngaext-night .ngaext-set-btn.on{background:#D8B45F;color:#1C1813;}'
     ].join('');
     (document.head || document.documentElement).appendChild(st);
@@ -440,8 +455,12 @@
         '<div class="ngaext-settings-box">' +
         '<button class="ngaext-settings-close" type="button">×</button>' +
         '<h3>NGA 转译设置</h3>' +
+        '<div class="ngaext-settings-highlight">' +
+        '<div><b>直接显示全文</b><div class="ngaext-settings-sub">开启后卡片不再折叠，正文直接展示完整内容</div></div>' +
+        '<button class="ngaext-set-btn ngaext-full-toggle" data-full type="button"></button></div>' +
         '<div style="font-size:12px;color:#8B7857;">GitHub 仓库</div>' +
         '<a class="ngaext-set-link" href="' + REPO_URL + '" target="_blank" rel="noopener">' + REPO_URL + '</a>' +
+        '<div style="font-size:12px;color:#8B7857;">支持站点：bin.disroot.org / paste.disroot.org / paste.to</div>' +
         '<div class="ngaext-settings-row"><span>夜色模式</span><button class="ngaext-set-btn" data-dark type="button"></button></div>' +
         '<div class="ngaext-settings-row"><span>正文预览</span>' +
         '<button class="ngaext-set-btn" data-pv="800" type="button">800 字</button>' +
@@ -463,6 +482,28 @@
         toggleDark();
         darkBtn.textContent = isDark() ? '已开启' : '已关闭';
         darkBtn.classList.toggle('on', isDark());
+      });
+
+      var fullBtn = panel.querySelector('[data-full]');
+      function paintFull() {
+        fullBtn.textContent = showFull() ? '已开启' : '已关闭';
+        fullBtn.classList.toggle('on', showFull());
+      }
+      paintFull();
+      fullBtn.addEventListener('click', function () {
+        var on = !showFull();
+        try { localStorage.setItem(SHOW_FULL_KEY, on ? '1' : '0'); } catch (e) {}
+        paintFull();
+        if (on) {
+          // 立即把当前已有的折叠卡片展开，不只影响后续卡片
+          var more = document.querySelectorAll('.ngaext-more');
+          for (var m = 0; m < more.length; m++) {
+            try { more[m].click(); } catch (e) {}
+          }
+        }
+        status.textContent = on
+          ? '已开启：当前和后续卡片都直接显示全文。'
+          : '已关闭：后续卡片恢复按预览长度折叠。';
       });
 
       var pvBtns = panel.querySelectorAll('[data-pv]');
@@ -539,7 +580,7 @@
       }
 
       var preview = previewLen();
-      if (full.length <= preview) {
+      if (showFull() || full.length <= preview) {
         main.innerHTML = '<div class="ngaext-body"></div>';
         main.querySelector('.ngaext-body').textContent = full;
         return;

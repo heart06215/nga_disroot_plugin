@@ -2,6 +2,7 @@ package com.ngaext;
 
 import android.webkit.WebView;
 
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Collections;
@@ -135,22 +136,28 @@ public class NgaExtHook implements IXposedHookLoadPackage {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                HttpURLConnection c = null;
-                try {
-                    c = (HttpURLConnection) new URL("https://bin.disroot.org/").openConnection();
-                    c.setRequestMethod("HEAD");
-                    c.setConnectTimeout(8000);
-                    c.setReadTimeout(8000);
-                    c.setRequestProperty("Connection", "keep-alive");
-                    c.getResponseCode();
+                String[] sites = {"https://bin.disroot.org/", "https://paste.to/"};
+                for (String site : sites) {
+                    HttpURLConnection c = null;
                     try {
-                        if (c.getInputStream() != null) c.getInputStream().close();
-                    } catch (Throwable ignored) {
+                        c = (HttpURLConnection) new URL(site).openConnection();
+                        c.setRequestMethod("HEAD");
+                        c.setConnectTimeout(8000);
+                        c.setReadTimeout(8000);
+                        c.setRequestProperty("Connection", "keep-alive");
+                        c.getResponseCode();
+                        try {
+                            InputStream in = c.getInputStream();
+                            if (in != null) in.close();
+                        } catch (Throwable ignored) {
+                        }
+                    } catch (Throwable t) {
+                        XposedBridge.log(TAG + "warmup failed (" + site + "): " + t);
+                    } finally {
+                        if (c != null) c.disconnect();
                     }
-                    XposedBridge.log(TAG + "warmup ok");
-                } catch (Throwable t) {
-                    XposedBridge.log(TAG + "warmup failed: " + t);
                 }
+                XposedBridge.log(TAG + "warmup ok");
             }
         }, "ngaext-warmup").start();
     }
