@@ -63,6 +63,23 @@ final class DiskCache {
         }
     }
 
+    /** 退出帖子时清空解密正文缓存 */
+    static void clear(Context ctx) {
+        if (ctx == null) return;
+        try {
+            File d = new File(ctx.getCacheDir(), "ngaext");
+            File[] files = d.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "disk cache clear failed: " + t);
+        }
+    }
+
     private static void trim(File d) {
         File[] files = d.listFiles();
         if (files == null || files.length <= MAX_FILES) return;

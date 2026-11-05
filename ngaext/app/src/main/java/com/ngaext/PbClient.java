@@ -21,6 +21,9 @@ public final class PbClient {
     }
 
     public static String resolveMulti(String urlWithFragment, String[] passwords) throws Exception {
+        if (!isAllowedUrl(urlWithFragment)) {
+            throw new IllegalArgumentException("不支持的链接域名");
+        }
         int hash = urlWithFragment.indexOf('#');
         if (hash < 0) throw new IllegalArgumentException("链接缺少解密密钥片段");
         String base = urlWithFragment.substring(0, hash);
@@ -99,6 +102,22 @@ public final class PbClient {
             out[i++] = v;
         }
         return out;
+    }
+
+    /** 只允许 PrivateBin 白名单域名，避免页面脚本滥用桥接访问任意地址 */
+    static boolean isAllowedUrl(String url) {
+        try {
+            URL u = new URL(url);
+            if (!"https".equalsIgnoreCase(u.getProtocol())) return false;
+            String host = u.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(java.util.Locale.ROOT);
+            return host.equals("paste.to")
+                    || host.equals("disroot.org")
+                    || host.endsWith(".disroot.org");
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     static String fetch(String url) throws IOException {

@@ -139,6 +139,17 @@ public class Bridge {
         }
     }
 
+    static void clearMemory() {
+        MEM_CACHE.clear();
+    }
+
+    /** 设置面板里的“清理解密缓存” */
+    @JavascriptInterface
+    public void clearCache() {
+        clearMemory();
+        DiskCache.clear(appContext());
+    }
+
     private static String[] parsePasswords(String raw) {
         if (raw == null || raw.length() == 0) return new String[]{""};
         String s = raw.trim();

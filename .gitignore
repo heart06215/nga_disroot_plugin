@@ -35,6 +35,7 @@ dev/pageid*.txt
 # signing keys (never publish)
 ngaext-installer/app/src/main/assets/keystore
 ngaext-installer/app/src/main/assets/ks.p12
+ngaext-installer/app/src/main/assets/default.bks
 
 # dev captured data
 dev/*.txt

@@ -2,14 +2,17 @@
   if (window.__ngaext_init) { try { window.__ngaext.scan(); } catch (e) {} return; }
   window.__ngaext_init = true;
 
-  var PREVIEW = 800;
-  var MAX_LINKS_PER_BLOCK = 120;
-  var MAX_CARDS = 240;
+  var PREVIEW = 3000;
+  var MAX_LINKS_PER_BLOCK = 300;
+  var MAX_CARDS = 600;
   var TEXT_CAP = 200000;
   var CONCURRENCY = 6;
   var BRIDGE = 'NgaExtBridge';
   var STYLE_ID = 'ngaext-style-v7';
   var DARK_KEY = 'ngaext.dark';
+  var PREVIEW_KEY = 'ngaext.preview';
+  var LAST_THREAD_KEY = 'ngaext.lastThreadKey';
+  var REPO_URL = 'https://github.com/heart06215/nga_disroot_plugin';
   var REQUEST_TIMEOUT = 45000;
 
   var callbacks = {};
@@ -18,6 +21,8 @@
   var inflight = 0;
   var seq = 0;
   var stickyPw = '';
+  var serviceNoticeShown = false;
+  var capNoticeShown = false;
 
   var B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
@@ -39,6 +44,14 @@
     applyDark(on);
   }
   applyDark(isDark());
+
+  function previewLen() {
+    try {
+      var v = parseInt(localStorage.getItem(PREVIEW_KEY) || '3000', 10);
+      if (v >= 200 && v <= 20000) return v;
+    } catch (e) {}
+    return PREVIEW;
+  }
 
   /* ---------- 指纹识别 ---------- */
   function normalizeWide(text) {
@@ -101,14 +114,33 @@
   function saveStore(s) {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (e) {}
   }
+  function clearPasswordStore() {
+    try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+  }
 
-  /** 用楼主 UID 当帖子标识：同帖翻页稳定，换帖必变 */
+  /** 用稳定标题/楼主 UID 做帖子标识，翻页时复用最近一次 key */
   function threadKey() {
     try {
+      var title = document.querySelector('.articleTitle, .titleBlock, .wrapBox h1, .title');
+      if (title) {
+        var tt = (title.textContent || '').replace(/\s+/g, ' ').trim();
+        if (tt.length >= 2) {
+          var tk = 't' + tt.slice(0, 60);
+          try { localStorage.setItem(LAST_THREAD_KEY, tk); } catch (e) {}
+          return tk;
+        }
+      }
       var first = document.querySelector('.columnItem');
+      var last = '';
+      try { last = localStorage.getItem(LAST_THREAD_KEY) || ''; } catch (e) {}
+      if (last) return last;
       if (!first) return '';
       var m = (first.innerHTML || '').match(/doAction\(304,\[\s*'(\d+)'\s*\]\)/);
-      if (m) return 'u' + m[1];
+      if (m) {
+        var uk = 'u' + m[1];
+        try { localStorage.setItem(LAST_THREAD_KEY, uk); } catch (e) {}
+        return uk;
+      }
       var t = (first.textContent || '').replace(/\s+/g, '');
       return t ? 'h' + t.slice(0, 24) : '';
     } catch (e) { return ''; }
@@ -129,11 +161,11 @@
     if (!Array.isArray(e.pws)) e.pws = [];
     if (e.pws.indexOf(p) < 0) {
       e.pws.push(p);
-      while (e.pws.length > 20) e.pws.shift();
+      while (e.pws.length > 50) e.pws.shift();
     }
     s[key] = e;
     var keys = Object.keys(s);
-    while (keys.length > 5) { delete s[keys[0]]; keys = Object.keys(s); }
+    while (keys.length > 10) { delete s[keys[0]]; keys = Object.keys(s); }
     saveStore(s);
   }
 
@@ -174,6 +206,8 @@
 
   function textOf(el) {
     try {
+      // 首次扫描时楼层里还没有卡片，直接取 textContent，避免每个楼层都 clone 一整棵 DOM
+      if (!el.querySelector || !el.querySelector('.ngaext-card')) return el.textContent || '';
       var clone = el.cloneNode(true);
       var cards = clone.querySelectorAll('.ngaext-card');
       for (var i = 0; i < cards.length; i++) {
@@ -194,7 +228,7 @@
     var st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = [
-      '.ngaext-card{position:relative;margin:10px 2px 8px 2px;padding:13px 15px 12px 17px;',
+      '.ngaext-card{position:relative;margin:10px auto 8px auto;max-width:960px;padding:13px 15px 12px 17px;',
       'background:linear-gradient(180deg,#FDF9F1 0%,#FAF3E6 100%) !important;',
       'border:1px solid #D8BE84 !important;border-radius:9px !important;',
       'box-shadow:0 2px 10px rgba(160,120,40,.14), inset 0 1px 0 #FFFDF8 !important;',
@@ -228,6 +262,30 @@
       '.ngaext-err{color:#9A3B2E !important;font-size:13px !important;}',
       '.ngaext-load{color:#8B7857 !important;font-size:13px !important;}',
       '.ngaext-wrap{position:relative;}',
+      '.ngaext-settings{flex:0 0 auto;width:24px;height:24px;line-height:22px;padding:0;margin-left:2px;text-align:center;',
+      'background:#FFFDF8 !important;border:1px solid #D8BE84 !important;border-radius:50% !important;',
+      'color:#8A6A22 !important;font-size:13px !important;cursor:pointer;}',
+      '.ngaext-notice{margin:10px 8px;padding:12px 14px;border:1px solid #D8BE84;border-radius:8px;',
+      'background:#FFF8E8;color:#5C4B33;font-size:13px;line-height:1.6;}',
+      '.ngaext-notice b{color:#9A3B2E;}',
+      '.ngaext-notice button{margin-top:6px;padding:5px 10px;border:1px solid #D8BE84;border-radius:6px;',
+      'background:#FFFDF8;color:#8A6A22;font-size:12px;}',
+      '.ngaext-pwbox{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}',
+      '.ngaext-pwbox input{flex:1;min-width:120px;padding:7px 8px;border:1px solid #D8BE84;border-radius:6px;',
+      'background:#FFFDF8;color:#2F271C;font-size:13px;}',
+      '.ngaext-pwbox button{padding:7px 10px;border:1px solid #D8BE84;border-radius:6px;background:#FFFDF8;',
+      'color:#8A6A22;font-size:12px;}',
+      '.ngaext-settings-panel{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);',
+      'z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:16px;}',
+      '.ngaext-settings-box{width:86%;max-width:420px;max-height:80vh;overflow:auto;background:#FBF7F0;',
+      'border:1px solid #D8BE84;border-radius:12px;padding:16px;color:#2F271C;font-size:14px;line-height:1.6;}',
+      '.ngaext-settings-box h3{margin:0 0 8px 0;font-size:17px;color:#2F271C;}',
+      '.ngaext-settings-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;}',
+      '.ngaext-set-btn{padding:6px 10px;border:1px solid #D8BE84;border-radius:6px;background:#FFFDF8;',
+      'color:#8A6A22;font-size:12px;}',
+      '.ngaext-set-btn.on{background:#8A6A22;color:#FFFDF8;}',
+      '.ngaext-set-link{display:block;margin:8px 0;color:#8A6A22;font-size:13px;word-break:break-all;}',
+      '.ngaext-settings-close{float:right;border:0;background:transparent;font-size:18px;color:#8A6A22;cursor:pointer;}',
 
       'html.ngaext-night .ngaext-card{background:linear-gradient(180deg,#241F19 0%,#1C1813 100%) !important;',
       'border-color:#6B5730 !important;color:#E9DFCB !important;',
@@ -244,7 +302,14 @@
       'html.ngaext-night .ngaext-act{color:#C9A85F !important;}',
       'html.ngaext-night .ngaext-fade{background:linear-gradient(180deg,rgba(28,24,19,0) 0%,rgba(28,24,19,.92) 70%,#1C1813 100%);}',
       'html.ngaext-night .ngaext-err{color:#E08A7A !important;}',
-      'html.ngaext-night .ngaext-load{color:#A8987A !important;}'
+      'html.ngaext-night .ngaext-load{color:#A8987A !important;}',
+      'html.ngaext-night .ngaext-settings,html.ngaext-night .ngaext-set-btn,html.ngaext-night .ngaext-pwbox button,',
+      'html.ngaext-night .ngaext-notice button{background:#2A241C !important;border-color:#6B5730 !important;color:#D8B45F !important;}',
+      'html.ngaext-night .ngaext-notice{background:#2A241C;border-color:#6B5730;color:#E9DFCB;}',
+      'html.ngaext-night .ngaext-pwbox input{background:#2A241C;border-color:#6B5730;color:#E9DFCB;}',
+      'html.ngaext-night .ngaext-settings-box{background:#1C1813;border-color:#6B5730;color:#E9DFCB;}',
+      'html.ngaext-night .ngaext-settings-box h3{color:#E9DFCB;}',
+      'html.ngaext-night .ngaext-set-btn.on{background:#D8B45F;color:#1C1813;}'
     ].join('');
     (document.head || document.documentElement).appendChild(st);
   }
@@ -258,13 +323,20 @@
       '<div class="ngaext-head"><span class="ngaext-dot"></span>' +
       '<span class="ngaext-title">网页文本已转译到此处</span>' +
       '<span class="ngaext-idx">' + (idxLabel || '') + '</span>' +
-      '<button class="ngaext-mode" title="切换夜色模式">' + (isDark() ? '☀' : '☾') + '</button></div>' +
+      '<button class="ngaext-mode" title="切换夜色模式">' + (isDark() ? '☀' : '☾') + '</button>' +
+      '<button class="ngaext-settings" title="插件设置">⚙</button></div>' +
       '<div class="ngaext-main"><div class="ngaext-load">正在解析外链…</div></div>' +
       '<div class="ngaext-foot"><span class="ngaext-tag">解析中</span><span class="ngaext-src"></span></div>';
     var btn = card.querySelector('.ngaext-mode');
     btn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation(); toggleDark();
     });
+    var setBtn = card.querySelector('.ngaext-settings');
+    if (setBtn) {
+      setBtn.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); openSettings();
+      });
+    }
     return card;
   }
 
@@ -275,6 +347,155 @@
     b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); handler(); });
     foot.appendChild(b);
     return b;
+  }
+
+  function showServiceNotice(detail) {
+    if (serviceNoticeShown) return;
+    serviceNoticeShown = true;
+    try {
+      var host = document.querySelector('.wrapBox') || document.body;
+      if (!host) return;
+      var box = document.createElement('div');
+      box.className = 'ngaext-notice';
+      box.innerHTML = '<div><b>无法检测到 disroot 内容。</b></div>' +
+        '<div>请先确认 disroot 服务是否正常（可搜索 disroot 状态），或重装 NGA 和插件后重试。</div>' +
+        '<div style="font-size:12px;opacity:.75;margin-top:4px;"></div>' +
+        '<button type="button">知道了</button>';
+      var d = box.querySelector('div[style]');
+      if (d) d.textContent = detail || '';
+      box.querySelector('button').addEventListener('click', function () {
+        if (box.parentNode) box.parentNode.removeChild(box);
+      });
+      host.insertBefore(box, host.firstChild);
+    } catch (e) {}
+  }
+
+  function showCapNotice() {
+    if (capNoticeShown) return;
+    capNoticeShown = true;
+    try {
+      var host = document.querySelector('.wrapBox') || document.body;
+      if (!host) return;
+      var box = document.createElement('div');
+      box.className = 'ngaext-notice';
+      box.innerHTML = '<div><b>本页链接较多，只解析了前面的内容。</b></div>' +
+        '<div>单楼层最多 ' + MAX_LINKS_PER_BLOCK + ' 条、整页最多 ' + MAX_CARDS + ' 条，请分页查看。</div>' +
+        '<button type="button">知道了</button>';
+      box.querySelector('button').addEventListener('click', function () {
+        if (box.parentNode) box.parentNode.removeChild(box);
+      });
+      host.insertBefore(box, host.firstChild);
+    } catch (e) {}
+  }
+
+  function showPasswordInput(card, ctx) {
+    try {
+      var main = card.querySelector('.ngaext-main');
+      if (!main) return;
+      var old = main.querySelector('.ngaext-pwbox');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      var box = document.createElement('div');
+      box.className = 'ngaext-pwbox';
+      var input = document.createElement('input');
+      input.type = 'password';
+      input.placeholder = '输入本帖密码';
+      input.autocomplete = 'off';
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.textContent = '确定';
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = '取消';
+      box.appendChild(input);
+      box.appendChild(ok);
+      box.appendChild(cancel);
+      main.appendChild(box);
+      input.focus();
+      ok.addEventListener('click', function () {
+        var pw = (input.value || '').trim();
+        if (!pw) { input.focus(); return; }
+        var tk = threadKey();
+        if (tk) rememberPw(tk, pw);
+        ctx.pws = [pw].concat(ctx.pws || []);
+        if (box.parentNode) box.parentNode.removeChild(box);
+        retry(card, ctx);
+      });
+      cancel.addEventListener('click', function () {
+        if (box.parentNode) box.parentNode.removeChild(box);
+      });
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); ok.click(); }
+      });
+    } catch (e) {}
+  }
+
+  function openSettings() {
+    try {
+      var old = document.getElementById('ngaext-settings-panel');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      var panel = document.createElement('div');
+      panel.id = 'ngaext-settings-panel';
+      panel.className = 'ngaext-settings-panel';
+      panel.innerHTML =
+        '<div class="ngaext-settings-box">' +
+        '<button class="ngaext-settings-close" type="button">×</button>' +
+        '<h3>NGA 转译设置</h3>' +
+        '<div style="font-size:12px;color:#8B7857;">GitHub 仓库</div>' +
+        '<a class="ngaext-set-link" href="' + REPO_URL + '" target="_blank" rel="noopener">' + REPO_URL + '</a>' +
+        '<div class="ngaext-settings-row"><span>夜色模式</span><button class="ngaext-set-btn" data-dark type="button"></button></div>' +
+        '<div class="ngaext-settings-row"><span>正文预览</span>' +
+        '<button class="ngaext-set-btn" data-pv="800" type="button">800 字</button>' +
+        '<button class="ngaext-set-btn" data-pv="3000" type="button">3000 字</button>' +
+        '<button class="ngaext-set-btn" data-pv="8000" type="button">8000 字</button></div>' +
+        '<div class="ngaext-settings-row">' +
+        '<button class="ngaext-set-btn" data-cache type="button">清理解密缓存</button>' +
+        '<button class="ngaext-set-btn" data-pw type="button">清除密码记忆</button></div>' +
+        '<div style="font-size:12px;color:#8B7857;margin-top:8px;">退出帖子会自动清理解密缓存；密码只保存在本机。</div>' +
+        '<div class="ngaext-settings-status" style="font-size:12px;color:#2E7D4F;margin-top:6px;"></div>' +
+        '</div>';
+      document.body.appendChild(panel);
+
+      var status = panel.querySelector('.ngaext-settings-status');
+      var darkBtn = panel.querySelector('[data-dark]');
+      darkBtn.textContent = isDark() ? '已开启' : '已关闭';
+      darkBtn.classList.toggle('on', isDark());
+      darkBtn.addEventListener('click', function () {
+        toggleDark();
+        darkBtn.textContent = isDark() ? '已开启' : '已关闭';
+        darkBtn.classList.toggle('on', isDark());
+      });
+
+      var pvBtns = panel.querySelectorAll('[data-pv]');
+      for (var i = 0; i < pvBtns.length; i++) {
+        pvBtns[i].classList.toggle('on', parseInt(pvBtns[i].getAttribute('data-pv'), 10) === previewLen());
+        pvBtns[i].addEventListener('click', function () {
+          var v = this.getAttribute('data-pv');
+          try { localStorage.setItem(PREVIEW_KEY, v); } catch (e) {}
+          for (var j = 0; j < pvBtns.length; j++) pvBtns[j].classList.remove('on');
+          this.classList.add('on');
+          status.textContent = '预览长度已改为 ' + v + ' 字，新解析的卡片生效。';
+        });
+      }
+
+      panel.querySelector('[data-cache]').addEventListener('click', function () {
+        try {
+          if (window[BRIDGE] && window[BRIDGE].clearCache) window[BRIDGE].clearCache();
+          cache = {};
+          status.textContent = '解密缓存已清理。';
+        } catch (e) { status.textContent = '清理失败，请重试。'; }
+      });
+      panel.querySelector('[data-pw]').addEventListener('click', function () {
+        clearPasswordStore();
+        stickyPw = '';
+        status.textContent = '本机密码记忆已清除。';
+      });
+      panel.querySelector('.ngaext-settings-close').addEventListener('click', function () {
+        if (panel.parentNode) panel.parentNode.removeChild(panel);
+      });
+      panel.addEventListener('click', function (e) {
+        if (e.target === panel) panel.parentNode.removeChild(panel);
+      });
+    } catch (e) {}
   }
 
   function fillCard(card, payload, ctx) {
@@ -292,10 +513,15 @@
       if (!payload || !payload.ok) {
         tag.textContent = '解析失败';
         main.innerHTML = '<div class="ngaext-err"></div>';
+        var errText = (payload && payload.error) || '未知错误';
         var e = main.querySelector('.ngaext-err');
-        if (e) e.textContent = (payload && payload.error) || '未知错误';
+        if (e) e.textContent = errText;
         src.textContent = '';
+        if (/PrivateBin|维护|HTTP|Failed to connect|UnknownHost|连接|超时/i.test(errText)) {
+          showServiceNotice(errText);
+        }
         if (ctx && ctx.url) {
+          addAction(foot, '输入密码', function () { showPasswordInput(card, ctx); });
           addAction(foot, '重试', function () { retry(card, ctx); });
           addAction(foot, '打开原链', function () { openUrl(ctx.url); });
         }
@@ -312,7 +538,8 @@
         addAction(foot, '原链', function () { openUrl(ctx.url); });
       }
 
-      if (full.length <= PREVIEW) {
+      var preview = previewLen();
+      if (full.length <= preview) {
         main.innerHTML = '<div class="ngaext-body"></div>';
         main.querySelector('.ngaext-body').textContent = full;
         return;
@@ -323,7 +550,7 @@
       var body = main.querySelector('.ngaext-body');
       var fade = main.querySelector('.ngaext-fade');
       var more = main.querySelector('.ngaext-more');
-      body.textContent = full.substring(0, PREVIEW);
+      body.textContent = full.substring(0, preview);
       more.addEventListener('click', function () {
         body.textContent = full;
         fade.style.display = 'none';
@@ -431,19 +658,65 @@
     }
   }
 
+  function isNestedUnit(node) {
+    return !!(node && node.nodeType === 1 && node.classList &&
+      (node.classList.contains('commentItem') || node.classList.contains('replyItem') ||
+       node.classList.contains('subCommentItem') || node.classList.contains('subFloorItem') ||
+       node.classList.contains('comment-item') || node.classList.contains('reply-item') ||
+       node.classList.contains('comment') || node.classList.contains('reply') ||
+       node.classList.contains('subcomment') || node.classList.contains('subreply')));
+  }
+
+  function insideColumn(node) {
+    while (node && node !== document.body) {
+      if (node.nodeType === 1 && node.classList && node.classList.contains('columnItem')) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  function hasNestedUnitAncestor(node) {
+    node = node && node.parentNode;
+    while (node && node !== document.body) {
+      if (isNestedUnit(node)) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  /** 楼层 + 独立楼中楼容器；楼中楼若在楼层内部，文本已随楼层一起扫描 */
+  function collectUnits() {
+    var out = [];
+    var cols = document.querySelectorAll('.columnItem');
+    for (var i = 0; i < cols.length; i++) out.push({ el: cols[i], byItem: true });
+
+    var extra = document.querySelectorAll('.commentItem,.replyItem,.subCommentItem,.subFloorItem,.comment-item,.reply-item,.comment,.reply,.subcomment,.subreply');
+    for (var j = 0; j < extra.length; j++) {
+      var el = extra[j];
+      if (insideColumn(el) || hasNestedUnitAncestor(el)) continue;
+      out.push({ el: el, byItem: false });
+    }
+
+    if (out.length === 0) {
+      var blocks = document.querySelectorAll('.articleBlock');
+      for (var k = 0; k < blocks.length; k++) out.push({ el: blocks[k], byItem: false });
+    }
+    return out;
+  }
+
   function scan() {
     try {
       showVersionBanner();
-      var scope = document.querySelectorAll('.columnItem');
-      var byItem = scope.length > 0;
-      var units = byItem ? scope : document.querySelectorAll('.articleBlock');
+      var units = collectUnits();
 
       var tkey = threadKey();
       var entry = threadEntry(tkey);
       var stickyPw = entry.sticky;
+      var capped = false;
 
       for (var i = 0; i < units.length; i++) {
-        var unit = units[i];
+        var unit = units[i].el;
+        var byItem = units[i].byItem;
         if (unit.getAttribute('data-ngaext')) continue;
 
         var text = textOf(unit);
@@ -460,13 +733,15 @@
         }
 
         var links = findLinks(text);
+        if (links.length >= MAX_LINKS_PER_BLOCK) capped = true;
         if (links.length === 0) { unit.setAttribute('data-ngaext', 'none'); continue; }
 
         var pws = candidatesFor(pwd, stickyPw, entry.pws);
         var anchor = byItem ? (unit.querySelector('.articleBlock') || unit) : unit;
+        if (!anchor || !anchor.parentNode) continue;
         var made = 0;
         for (var k = 0; k < links.length; k++) {
-          if (cardCount() >= MAX_CARDS) break;
+          if (cardCount() >= MAX_CARDS) { capped = true; break; }
           var url = links[k];
           var card = makeCard(links.length > 1 ? ('外链 ' + (k + 1) + '/' + links.length) : '');
           anchor.parentNode.insertBefore(card, anchor.nextSibling);
@@ -482,6 +757,7 @@
         }
         unit.setAttribute('data-ngaext', made > 0 ? 'pending' : 'skipped');
       }
+      if (capped) showCapNotice();
       pump();
     } catch (e) {}
   }
@@ -500,6 +776,7 @@
       if (node.nodeType === 1 && node.classList) {
         if (node.classList.contains('columnItem')) return node;
         if (!block && node.classList.contains('articleBlock')) block = node;
+        if (!block && isNestedUnit(node) && !insideColumn(node)) block = node;
       }
       node = node.parentNode;
     }

@@ -29,6 +29,7 @@ public class NgaExtHook implements IXposedHookLoadPackage {
         XposedBridge.log(TAG + "loaded in " + lpparam.packageName);
         warmup();
         UpdateGuard.install(lpparam.classLoader);
+        hookThreadCache(lpparam);
 
         hookLoad(lpparam, "loadDataWithBaseURL", String.class, String.class, String.class, String.class, String.class);
         hookLoad(lpparam, "loadUrl", String.class);
@@ -60,6 +61,29 @@ public class NgaExtHook implements IXposedHookLoadPackage {
                     });
         } catch (Throwable t) {
             XposedBridge.log(TAG + "hook onPageFinished failed: " + t);
+        }
+    }
+
+    /** 退出帖子时清理解密正文缓存 */
+    private void hookThreadCache(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "gov.pianzong.androidnga.activity.forumdetail.ArticleDetailActivity",
+                    lpparam.classLoader, "onDestroy", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            Bridge.clearMemory();
+                            try {
+                                android.content.Context ctx =
+                                        ((android.content.Context) param.thisObject).getApplicationContext();
+                                DiskCache.clear(ctx);
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    });
+            XposedBridge.log(TAG + "thread cache cleanup installed");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + "thread cache cleanup hook failed: " + t);
         }
     }
 
@@ -176,7 +200,7 @@ public class NgaExtHook implements IXposedHookLoadPackage {
             }
         } catch (Throwable ignored) {
         }
-        boolean ok = (code == targetCode) || (code == 0);
+        boolean ok = (code == targetCode) || (code == 0) || (code >= 90900 && code <= 90999);
         return "window.NGAEXT_VER={code:" + code + ",name:\"" + name + "\",targetCode:" + targetCode
                 + ",targetName:\"" + targetName + "\",ok:" + ok + "};";
     }
