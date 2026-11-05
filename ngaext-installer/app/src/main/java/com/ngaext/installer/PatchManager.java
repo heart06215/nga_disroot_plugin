@@ -180,31 +180,6 @@ public final class PatchManager {
         return out;
     }
 
-    /** 当前已安装 NGA 的签名是否与安装器密钥一致（不一致时绝不能覆盖更新） */
-    static boolean signatureMatches(Context ctx) {
-        try {
-            android.content.pm.PackageInfo pi = ctx.getPackageManager().getPackageInfo(
-                    TARGET, android.content.pm.PackageManager.GET_SIGNATURES);
-            if (pi.signatures == null || pi.signatures.length == 0) return false;
-            byte[] actual = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(pi.signatures[0].toByteArray());
-
-            java.security.Security.setProperty("keystore.type", "BKS");
-            KeyStore ks = KeyStore.getInstance("BKS");
-            try (FileInputStream in = new FileInputStream(extractDefaultKeystore(ctx))) {
-                ks.load(in, "123456".toCharArray());
-            }
-            Certificate cert = ks.getCertificate("key0");
-            if (cert == null) return false;
-            byte[] expected = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(cert.getEncoded());
-            return java.security.MessageDigest.isEqual(actual, expected);
-        } catch (Throwable t) {
-            Log.w(TAG, "signature check failed", t);
-            return false;
-        }
-    }
-
     /** 从已安装的改版 APK 里取出官方原版（LSPatch 会内嵌 assets/lspatch/origin.apk） */
     static File extractEmbeddedOrigin(Context ctx, File patchedApk) throws Exception {
         File out = new File(ctx.getCacheDir(), "origin.apk");
@@ -303,14 +278,6 @@ public final class PatchManager {
                 File[] oldOutputs = outDir.listFiles();
                 if (oldOutputs != null) {
                     for (File f : oldOutputs) f.delete();
-                }
-
-                // 已装改版：签名不一致时绝对不能再覆盖/卸载，否则会清空登录
-                if (hasModuleEntry(installed) && !signatureMatches(ctx)) {
-                    cb.onError("当前 NGA 的签名与安装器密钥不一致。\n"
-                            + "继续更新会清空登录，安装器已停止。\n"
-                            + "请先用原安装方式更新，或先备份账号后再处理。");
-                    return;
                 }
 
                 // 已装改版：只替换内嵌模块并用同一密钥重签，速度最快且保留登录状态

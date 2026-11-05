@@ -1,7 +1,6 @@
 package com.ngaext.installer;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -209,17 +208,6 @@ public class MainActivity extends Activity {
     }
 
     private void uninstallTarget() {
-        new AlertDialog.Builder(this)
-                .setTitle("确认卸载 NGA？")
-                .setMessage("卸载会清空 NGA 的登录状态和本地数据，且无法恢复。\n"
-                        + "只有在签名不一致、必须换包时才需要卸载。\n"
-                        + "建议先确认当前安装包和安装器密钥是否一致。")
-                .setNegativeButton("取消", null)
-                .setPositiveButton("仍然卸载", (d, w) -> doUninstall())
-                .show();
-    }
-
-    private void doUninstall() {
         try {
             Intent i = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + PatchManager.TARGET));
             startActivity(i);
