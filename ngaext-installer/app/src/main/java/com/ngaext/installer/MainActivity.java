@@ -27,6 +27,9 @@ public class MainActivity extends Activity {
     private Button btnBuild, btnUninstall, btnInstall;
     private ProgressBar progress;
     private File patched;
+    private boolean oneClickPending;
+    private File pendingInstall;
+    private int uninstallPolls;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,25 +46,25 @@ public class MainActivity extends Activity {
         title.setTextColor(0xFF2F271C);
 
         status = new TextView(this);
-        status.setText("步骤 1/3：生成补丁包");
+        status.setText("一键安装：读取本机官方 NGA → 打插件 → 自动卸载 → 自动安装");
         status.setTextSize(14);
         status.setTextColor(0xFF8A6A22);
         status.setPadding(0, 12, 0, 16);
 
         TextView note = new TextView(this);
-        note.setText("说明：优先尝试原地覆盖安装，登录状态通常会保留。\n"
-                + "如果系统提示签名不同，再点②卸载 NGA（会清空登录），然后安装。\n"
-                + "全程在本机完成，不联网上传任何内容。");
+        note.setText("说明：官方版首次安装会先卸载（会清一次登录），随后自动打开安装确认。\n"
+                + "已装同一密钥的改版则直接覆盖更新，通常保留登录。\n"
+                + "全程在本机完成，不上传 NGA 安装包或账号数据。");
         note.setTextSize(12);
         note.setTextColor(0xFF6B5B45);
         note.setPadding(0, 0, 0, 20);
 
         btnBuild = new Button(this);
-        btnBuild.setText("① 生成补丁包");
-        btnBuild.setOnClickListener(v -> startBuild());
+        btnBuild.setText("一键安装 / 更新 NGA 插件");
+        btnBuild.setOnClickListener(v -> startBuild(true));
 
         btnUninstall = new Button(this);
-        btnUninstall.setText("② 卸载 NGA（仅签名不同时）");
+        btnUninstall.setText("单独卸载 NGA（会清登录）");
         btnUninstall.setEnabled(false);
         btnUninstall.setOnClickListener(v -> uninstallTarget());
 
@@ -174,7 +177,8 @@ public class MainActivity extends Activity {
             append("复制失败：" + t.getMessage());
         }
     }
-    private void startBuild() {
+    private void startBuild(boolean oneClick) {
+        oneClickPending = oneClick;
         btnBuild.setEnabled(false);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         progress.setVisibility(android.view.View.VISIBLE);
@@ -186,16 +190,37 @@ public class MainActivity extends Activity {
                 patched = apk;
                 getPreferences(MODE_PRIVATE).edit()
                         .putString("patched", apk.getAbsolutePath()).apply();
+                final boolean auto = oneClickPending;
+                oneClickPending = false;
                 ui.post(() -> {
                     getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     progress.setVisibility(android.view.View.GONE);
-                    status.setText("步骤 2/3：可直接尝试安装；若提示签名不同，再点②卸载");
+                    btnBuild.setEnabled(true);
                     btnUninstall.setEnabled(true);
                     btnInstall.setEnabled(true);
                     append("补丁包已就绪：" + apk.getName());
+                    if (!auto) {
+                        status.setText("补丁包已生成，可手动安装");
+                        return;
+                    }
+                    boolean alreadyPatched = false;
+                    try {
+                        alreadyPatched = PatchManager.hasModuleEntry(
+                                PatchManager.targetApk(MainActivity.this));
+                    } catch (Throwable ignored) {
+                    }
+                    if (alreadyPatched) {
+                        // 同签名改版直接覆盖，避免多一次卸载和清登录
+                        status.setText("正在打开安装确认…");
+                        installPatched();
+                    } else {
+                        status.setText("正在打开卸载确认…");
+                        uninstallThenInstall(apk);
+                    }
                 });
             }
             @Override public void onError(String message) {
+                oneClickPending = false;
                 ui.post(() -> {
                     getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     progress.setVisibility(android.view.View.GONE);
@@ -205,6 +230,47 @@ public class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    /** 一键流程：先让系统卸载 NGA，包被移除后自动打开补丁安装确认 */
+    private void uninstallThenInstall(File apk) {
+        pendingInstall = apk;
+        uninstallPolls = 0;
+        try {
+            Intent i = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + PatchManager.TARGET));
+            startActivity(i);
+            ui.postDelayed(this::pollAfterUninstall, 600);
+        } catch (Throwable t) {
+            append("无法打开卸载界面：" + t.getMessage());
+            pendingInstall = null;
+        }
+    }
+
+    private void pollAfterUninstall() {
+        if (pendingInstall == null) return;
+        if (!isTargetInstalled()) {
+            File apk = pendingInstall;
+            pendingInstall = null;
+            patched = apk;
+            status.setText("已卸载，正在打开安装确认…");
+            installPatched();
+            return;
+        }
+        if (++uninstallPolls > 120) {
+            pendingInstall = null;
+            status.setText("未检测到卸载完成，可稍后手动点“安装补丁包”");
+            return;
+        }
+        ui.postDelayed(this::pollAfterUninstall, 500);
+    }
+
+    private boolean isTargetInstalled() {
+        try {
+            getPackageManager().getPackageInfo(PatchManager.TARGET, 0);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private void uninstallTarget() {

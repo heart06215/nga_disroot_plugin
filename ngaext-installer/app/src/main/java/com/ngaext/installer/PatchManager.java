@@ -87,7 +87,7 @@ public final class PatchManager {
     }
 
     /** 只替换已安装改版里的模块 APK，再用同一密钥重签；不需要重新打 LSPatch，登录不丢 */
-    static File updatePatchedModule(Context ctx, File installed, File module, File outDir) throws Exception {
+    static File updatePatchedModule(Context ctx, File installed, File newModule, File outDir) throws Exception {
         File out = new File(outDir, "module-update.apk");
         java.security.Security.setProperty("keystore.type", "BKS");
         KeyStore keyStore = KeyStore.getInstance("BKS");
@@ -114,7 +114,7 @@ public final class PatchManager {
                 String name = e.getName();
                 if (name.equals("assets/lspatch/origin.apk")) originCopied = true;
                 // origin.apk 是 LSPatch 运行时加载原应用代码所必需的，必须保留
-                if (name.equals(MODULE_ENTRY)) continue;
+                if (newModule != null && name.equals(MODULE_ENTRY)) continue;
                 if (name.startsWith("META-INF/") && (
                         name.equals("META-INF/MANIFEST.MF")
                         || name.endsWith(".SF") || name.endsWith(".RSA") || name.endsWith(".DSA"))) {
@@ -155,14 +155,16 @@ public final class PatchManager {
                     zout.closeEntry();
                 }
             }
-            java.util.zip.ZipEntry moduleEntry = new java.util.zip.ZipEntry(MODULE_ENTRY);
-            alignEntry(counter.count, MODULE_ENTRY, moduleEntry);
-            zout.putNextEntry(moduleEntry);
-            try (InputStream moduleIn = new FileInputStream(module)) {
-                int n;
-                while ((n = moduleIn.read(buf)) > 0) zout.write(buf, 0, n);
+            if (newModule != null) {
+                java.util.zip.ZipEntry moduleEntry = new java.util.zip.ZipEntry(MODULE_ENTRY);
+                alignEntry(counter.count, MODULE_ENTRY, moduleEntry);
+                zout.putNextEntry(moduleEntry);
+                try (InputStream moduleIn = new FileInputStream(newModule)) {
+                    int n;
+                    while ((n = moduleIn.read(buf)) > 0) zout.write(buf, 0, n);
+                }
+                zout.closeEntry();
             }
-            zout.closeEntry();
         }
 
         ApkSigner.SignerConfig signerConfig = new ApkSigner.SignerConfig.Builder(
@@ -358,6 +360,17 @@ public final class PatchManager {
                     return;
                 }
                 File result = outs[0];
+                // 部分 Android 版本要求 resources.arsc/so 对齐；重签时顺手修正
+                try {
+                    cb.onLog("修正 APK 对齐并重签…");
+                    File aligned = updatePatchedModule(ctx, result, null, outDir);
+                    //noinspection ResultOfMethodCallIgnored
+                    result.delete();
+                    result = aligned;
+                } catch (Throwable t) {
+                    Log.w(TAG, "align full patch failed", t);
+                    cb.onLog("对齐修正失败，继续使用 LSPatch 原始输出");
+                }
                 new File(ctx.getCacheDir(), "base.apk").delete();
                 new File(ctx.getCacheDir(), "base_norm.apk").delete();
                 if (!src.equals(installed)) {
